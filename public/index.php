@@ -5,6 +5,16 @@ header("Content-Type: application/json; charset=UTF-8");
 $method = $_SERVER["REQUEST_METHOD"];
 $path = rtrim(parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH), "/");
 $path = $path === "" ? "/" : $path;
+if (
+    $path === "/api/class-attendances" ||
+    strpos($path, "/api/class-attendances/") === 0
+) {
+    $path = str_replace(
+        "/api/class-attendances",
+        "/api/attendances",
+        $path
+    );
+}
 
 function respond($data, $status = 200) {
     http_response_code($status);
@@ -152,7 +162,10 @@ if ($path === "/api/register" && $method === "POST") {
 }
 
 // AUTH: LOGIN
-if ($path === "/api/login" && $method === "POST") {
+if (
+    in_array($path, ["/api/login", "/api/auth/login"], true)
+    && $method === "POST"
+) {
     $data = input();
 
     foreach ($users as $user) {
@@ -176,7 +189,10 @@ if ($path === "/api/login" && $method === "POST") {
 }
 
 // AUTH: LOGOUT (demo only; token is not tracked)
-if ($path === "/api/logout" && $method === "POST") {
+if (
+    in_array($path, ["/api/logout", "/api/auth/logout"], true)
+    && $method === "POST"
+) {
     respond([
         "success" => true,
         "message" => "Logout successful (demo only)"
