@@ -23,6 +23,17 @@ if ($path === "/api/test" && $method === "GET") {
     exit;
 }
 
+if ($path === "/api/users" && $method === "GET") {
+    http_response_code(200);
+
+    echo json_encode([
+        "success" => true,
+        "message" => "Users endpoint is working",
+        "data" => []
+    ]);
+    exit;
+}
+
 http_response_code(404);
 echo json_encode([
     "success" => false,
