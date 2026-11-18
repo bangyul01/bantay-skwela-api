@@ -587,6 +587,50 @@ if (preg_match('#^/api/rooms/(\d+)$#', $path, $m)) {
     }
 }
 
+// STUDENTS: GET ENROLLED CLASS SCHEDULE
+if (preg_match('#^/api/students/(\d+)/schedule$#', $path, $m) && $method === "GET") {
+
+    $studentId = (int)$m[1];
+
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT
+                c.id,
+                s.name AS class_name,
+                s.name AS subject_name,
+                c.user_id AS teacher_id,
+                u.username AS teacher_name,
+                r.room_name,
+                TO_CHAR(c.class_datetime, 'FMDay') AS day_of_week,
+                TO_CHAR(c.class_datetime, 'HH12:MI AM') AS start_time,
+                NULL AS end_time
+            FROM class_enrollments e
+            JOIN classes c ON e.class_id = c.id
+            LEFT JOIN subjects s ON c.subject_id = s.id
+            LEFT JOIN users u ON c.user_id = u.id
+            LEFT JOIN rooms r ON c.room_id = r.id
+            WHERE e.student_id = :student_id
+            ORDER BY c.class_datetime ASC"
+        );
+
+        $stmt->execute([
+            ":student_id" => $studentId
+        ]);
+
+        respond([
+            "success" => true,
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Get student schedule error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to retrieve student schedule"
+        ], 500);
+    }
+}
 
 // CLASSES: GET ALL
 if ($path === "/api/classes" && $method === "GET") {
@@ -602,8 +646,6 @@ if ($path === "/api/classes" && $method === "GET") {
                 TO_CHAR(c.class_datetime, 'FMDay') AS day_of_week,
                 TO_CHAR(c.class_datetime, 'HH12:MI AM') AS start_time,
                 NULL AS end_time
-                TO_CHAR(c.class_datetime, 'FMDay') AS day_of_week,
-                TO_CHAR(c.class_datetime, 'HH12:MI AM') AS start_time
             FROM classes c
             LEFT JOIN subjects s ON c.subject_id = s.id
             LEFT JOIN users u ON c.user_id = u.id
