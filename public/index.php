@@ -296,61 +296,191 @@ if (
     ]);
 }
 
+
 // USERS: GET ALL
 if ($path === "/api/users" && $method === "GET") {
-    respond([
-        "success" => true,
-        "data" => safeUsers($users)
-    ]);
+    try {
+        $stmt = $pdo->query(
+            "SELECT * FROM users ORDER BY id ASC"
+        );
+
+        $usersFromDb = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        respond([
+            "success" => true,
+            "data" => safeUsers($usersFromDb)
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Get users error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to retrieve users"
+        ], 500);
+    }
 }
 
-// USERS: GET BY ID
+// USERS: GET, UPDATE, DELETE BY ID
 if (preg_match('#^/api/users/(\d+)$#', $path, $m)) {
     $id = (int)$m[1];
-    $index = findIndex($users, $id);
 
+    // GET USER
     if ($method === "GET") {
-        if ($index < 0) {
-            respond(["success" => false, "message" => "User not found"], 404);
-        }
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT * FROM users WHERE id = :id"
+            );
 
-        respond(["success" => true, "data" => safeUser($users[$index])]);
+            $stmt->execute([":id" => $id]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$user) {
+                respond([
+                    "success" => false,
+                    "message" => "User not found"
+                ], 404);
+            }
+
+            $user["phone"] = $user["phone_number"] ?? "";
+
+            respond([
+                "success" => true,
+                "data" => safeUser($user)
+            ]);
+
+        } catch (PDOException $e) {
+            error_log("Get user error: " . $e->getMessage());
+
+            respond([
+                "success" => false,
+                "message" => "Failed to retrieve user"
+            ], 500);
+        }
     }
 
+    // UPDATE USER
     if ($method === "PUT") {
-        if ($index < 0) {
-            respond(["success" => false, "message" => "User not found"], 404);
-        }
-
         $data = input();
 
-        foreach (["username", "email", "phone_number",
-                  "is_admin", "is_teacher", "is_student", "is_parent"] as $field) {
+        $allowedFields = [
+            "username",
+            "email",
+            "phone_number",
+            "student_number",
+            "qr_code",
+            "parent_id",
+            "section",
+            "is_admin",
+            "is_teacher",
+            "is_student",
+            "is_parent"
+        ];
+
+        // Accept Android field aliases
+        if (array_key_exists("name", $data) &&
+            !array_key_exists("username", $data)) {
+            $data["username"] = $data["name"];
+        }
+
+        if (array_key_exists("phone", $data) &&
+            !array_key_exists("phone_number", $data)) {
+            $data["phone_number"] = $data["phone"];
+        }
+
+        $updates = [];
+        $params = [":id" => $id];
+
+        foreach ($allowedFields as $field) {
             if (array_key_exists($field, $data)) {
-                $users[$index][$field] = $data[$field];
+                $updates[] = "$field = :$field";
+                $params[":$field"] = $data[$field];
             }
         }
 
         if (!empty($data["password"])) {
-            $users[$index]["password"] =
-                password_hash($data["password"], PASSWORD_DEFAULT);
+            $updates[] = "password = :password";
+            $params[":password"] = password_hash(
+                $data["password"],
+                PASSWORD_DEFAULT
+            );
         }
 
-        respond([
-            "success" => true,
-            "message" => "User updated",
-            "data" => safeUser($users[$index])
-        ]);
+        if (empty($updates)) {
+            respond([
+                "success" => false,
+                "message" => "No fields provided for update"
+            ], 400);
+        }
+
+        $updates[] = "updated_at = NOW()";
+
+        try {
+            $sql = "UPDATE users SET " .
+                   implode(", ", $updates) .
+                   " WHERE id = :id RETURNING *";
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+
+            $updatedUser = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$updatedUser) {
+                respond([
+                    "success" => false,
+                    "message" => "User not found"
+                ], 404);
+            }
+
+            $updatedUser["phone"] =
+                $updatedUser["phone_number"] ?? "";
+
+            respond([
+                "success" => true,
+                "message" => "User updated successfully",
+                "data" => safeUser($updatedUser)
+            ]);
+
+        } catch (PDOException $e) {
+            error_log("Update user error: " . $e->getMessage());
+
+            respond([
+                "success" => false,
+                "message" => "Failed to update user"
+            ], 500);
+        }
     }
 
+    // DELETE USER
     if ($method === "DELETE") {
-        if ($index < 0) {
-            respond(["success" => false, "message" => "User not found"], 404);
+        try {
+            $stmt = $pdo->prepare(
+                "DELETE FROM users WHERE id = :id RETURNING id"
+            );
+
+            $stmt->execute([":id" => $id]);
+            $deletedUser = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$deletedUser) {
+                respond([
+                    "success" => false,
+                    "message" => "User not found"
+                ], 404);
+            }
+
+            respond([
+                "success" => true,
+                "message" => "User deleted successfully"
+            ]);
+
+        } catch (PDOException $e) {
+            error_log("Delete user error: " . $e->getMessage());
+
+            respond([
+                "success" => false,
+                "message" => "Failed to delete user"
+            ], 500);
         }
-
-        array_splice($users, $index, 1);
-
-        respond(["success" => true, "message" => "User deleted"]);
     }
 }
 
