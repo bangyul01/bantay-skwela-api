@@ -1,14 +1,15 @@
 FROM php:8.3-cli
 
+RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev \
+    && docker-php-ext-install pdo_pgsql \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-RUN docker-php-ext-install pdo_mysql
-
 COPY public ./public
-COPY config ./config
 
 ENV PORT=10000
 
 EXPOSE 10000
 
-CMD php -S 0.0.0.0:${PORT} -t public public/index.php
+CMD ["sh", "-c", "php -S 0.0.0.0:${PORT} -t public"]
