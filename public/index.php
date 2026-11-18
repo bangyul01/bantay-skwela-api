@@ -139,72 +139,81 @@ if ($path === "/api/test" && $method === "GET") {
     ]);
 }
 
+
 // AUTH: REGISTER
 if ($path === "/api/register" && $method === "POST") {
     $data = input();
 
-    foreach ([
-    "username",
-    "email",
-    "phone_number",
-    "student_number",
-    "qr_code",
-    "parent_id",
-    "section",
-    "is_admin",
-    "is_teacher",
-    "is_student",
-    "is_parent"
-] as $field) {
-        if (empty($data[$field])) {
-            respond([
-                "success" => false,
-                "message" => "$field is required"
-            ], 400);
-        }
+    $username = trim($data["username"] ?? "");
+    $email = trim($data["email"] ?? "");
+    $password = $data["password"] ?? "";
+
+    if ($username === "" || $email === "" || $password === "") {
+        respond([
+            "success" => false,
+            "message" => "Username, email, and password are required"
+        ], 400);
     }
 
-    foreach ($users as $user) {
-        if ($user["username"] === $data["username"]) {
+    try {
+        $check = $pdo->prepare(
+            "SELECT id FROM users
+             WHERE username = :username OR email = :email"
+        );
+
+        $check->execute([
+            ":username" => $username,
+            ":email" => $email
+        ]);
+
+        if ($check->fetch()) {
             respond([
                 "success" => false,
-                "message" => "Username already exists"
+                "message" => "Username or email already exists"
             ], 409);
         }
 
-        if ($user["email"] === $data["email"]) {
-            respond([
-                "success" => false,
-                "message" => "Email already exists"
-            ], 409);
-        }
+        $stmt = $pdo->prepare(
+            "INSERT INTO users (
+                username, password, email, phone_number,
+                student_number, qr_code, parent_id, section,
+                is_admin, is_teacher, is_student, is_parent
+            ) VALUES (
+                :username, :password, :email, :phone_number,
+                :student_number, :qr_code, :parent_id, :section,
+                FALSE, FALSE, TRUE, FALSE
+            )
+            RETURNING *"
+        );
+
+        $stmt->execute([
+            ":username" => $username,
+            ":password" => password_hash($password, PASSWORD_DEFAULT),
+            ":email" => $email,
+            ":phone_number" => $data["phone_number"] ?? "",
+            ":student_number" => $data["student_number"] ?? null,
+            ":qr_code" => $data["qr_code"] ?? null,
+            ":parent_id" => !empty($data["parent_id"])
+                ? $data["parent_id"] : null,
+            ":section" => $data["section"] ?? null
+        ]);
+
+        $user = $stmt->fetch();
+
+        respond([
+            "success" => true,
+            "message" => "Registration successful",
+            "data" => safeUser($user)
+        ], 201);
+
+    } catch (PDOException $e) {
+        error_log("Registration error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Registration failed"
+        ], 500);
     }
-
-    $user = [
-    "id" => nextId($users),
-    "username" => $data["username"],
-    "password" => password_hash($data["password"], PASSWORD_DEFAULT),
-    "email" => $data["email"],
-    "phone_number" => $data["phone_number"] ?? "",
-
-    "student_number" => $data["student_number"] ?? null,
-    "qr_code" => null,
-    "parent_id" => $data["parent_id"] ?? null,
-    "section" => $data["section"] ?? null,
-
-    "is_admin" => false,
-    "is_teacher" => false,
-    "is_student" => true,
-    "is_parent" => false
-];
-
-    $users[] = $user;
-
-    respond([
-        "success" => true,
-        "message" => "Registration successful",
-        "data" => safeUser($user)
-    ], 201);
 }
 
 
@@ -215,44 +224,65 @@ if (
 ) {
     $data = input();
 
-    $identifier = $data["username"] ?? $data["email"] ?? "";
+    $identifier = trim($data["username"] ?? $data["email"] ?? "");
     $password = $data["password"] ?? "";
 
-    foreach ($users as $user) {
-
-        if (
-            ($user["username"] === $identifier ||
-             $user["email"] === $identifier) &&
-            password_verify($password, $user["password"])
-        ) {
-
-            $userData = safeUser($user);
-
-            $userData["phone"] = $user["phone_number"] ?? "";
-
-            if (!empty($user["is_admin"])) {
-                $userData["role"] = "admin";
-            } elseif (!empty($user["is_teacher"])) {
-                $userData["role"] = "teacher";
-            } elseif (!empty($user["is_parent"])) {
-                $userData["role"] = "parent";
-            } else {
-                $userData["role"] = "student";
-            }
-
-            respond([
-                "success" => true,
-                "message" => "Login successful",
-                "token" => bin2hex(random_bytes(32)),
-                "data" => $userData
-            ]);
-        }
+    if ($identifier === "" || $password === "") {
+        respond([
+            "success" => false,
+            "message" => "Username/email and password are required"
+        ], 400);
     }
 
-    respond([
-        "success" => false,
-        "message" => "Invalid username or password"
-    ], 401);
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT * FROM users
+             WHERE username = :username OR email = :email
+             LIMIT 1"
+        );
+
+        $stmt->execute([
+            ":username" => $identifier,
+            ":email" => $identifier
+        ]);
+
+        $user = $stmt->fetch();
+
+        if (!$user || !password_verify($password, $user["password"])) {
+            respond([
+                "success" => false,
+                "message" => "Invalid username or password"
+            ], 401);
+        }
+
+        $userData = safeUser($user);
+        $userData["phone"] = $user["phone_number"] ?? "";
+
+        if (!empty($user["is_admin"])) {
+            $userData["role"] = "admin";
+        } elseif (!empty($user["is_teacher"])) {
+            $userData["role"] = "teacher";
+        } elseif (!empty($user["is_parent"])) {
+            $userData["role"] = "parent";
+        } else {
+            $userData["role"] = "student";
+        }
+
+        respond([
+            "success" => true,
+            "message" => "Login successful",
+            "token" => bin2hex(random_bytes(32)),
+            "data" => $userData
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Login error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Login failed"
+        ], 500);
+    }
 }
 
 // AUTH: LOGOUT (demo only; token is not tracked)
