@@ -107,7 +107,7 @@ $attendances = [
 // DATABASE CONNECTION TEST
 if ($path === "/api/db-test" && $method === "GET") {
     try {
-        $stmt = $pdo->query("SELECT DATABASE() AS database_name");
+        $stmt = $pdo->query("SELECT current_database() AS database_name");
         $result = $stmt->fetch();
 
         respond([
