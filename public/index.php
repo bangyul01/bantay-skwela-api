@@ -594,14 +594,14 @@ if ($path === "/api/classes" && $method === "GET") {
         $stmt = $pdo->query(
             "SELECT
                 c.id,
-                c.subject_id,
-                c.user_id,
-                c.room_id,
-                c.class_datetime,
-                c.location,
+                s.name AS class_name,
                 s.name AS subject_name,
+                c.user_id AS teacher_id,
                 u.username AS teacher_name,
                 r.room_name,
+                TO_CHAR(c.class_datetime, 'FMDay') AS day_of_week,
+                TO_CHAR(c.class_datetime, 'HH12:MI AM') AS start_time,
+                NULL AS end_time
                 TO_CHAR(c.class_datetime, 'FMDay') AS day_of_week,
                 TO_CHAR(c.class_datetime, 'HH12:MI AM') AS start_time
             FROM classes c
