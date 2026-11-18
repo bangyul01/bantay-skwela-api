@@ -587,63 +587,238 @@ if (preg_match('#^/api/rooms/(\d+)$#', $path, $m)) {
     }
 }
 
-// CLASSES
-if ($path === "/api/classes") {
-    if ($method === "GET") {
-        respond(["success" => true, "data" => $classes]);
+
+// CLASSES: GET ALL
+if ($path === "/api/classes" && $method === "GET") {
+    try {
+        $stmt = $pdo->query(
+            "SELECT
+                c.id,
+                c.subject_id,
+                c.user_id,
+                c.room_id,
+                c.class_datetime,
+                c.location,
+                s.name AS subject_name,
+                u.username AS teacher_name,
+                r.room_name,
+                TO_CHAR(c.class_datetime, 'FMDay') AS day_of_week,
+                TO_CHAR(c.class_datetime, 'HH12:MI AM') AS start_time
+            FROM classes c
+            LEFT JOIN subjects s ON c.subject_id = s.id
+            LEFT JOIN users u ON c.user_id = u.id
+            LEFT JOIN rooms r ON c.room_id = r.id
+            ORDER BY c.class_datetime ASC"
+        );
+
+        respond([
+            "success" => true,
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Get classes error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to retrieve classes"
+        ], 500);
+    }
+}
+
+// CLASSES: CREATE
+if ($path === "/api/classes" && $method === "POST") {
+    $data = input();
+
+    foreach (["subject_id", "user_id", "room_id", "class_datetime"] as $field) {
+        if (!isset($data[$field]) || $data[$field] === "") {
+            respond([
+                "success" => false,
+                "message" => "$field is required"
+            ], 400);
+        }
     }
 
-    if ($method === "POST") {
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO classes (
+                subject_id, user_id, room_id, class_datetime, location
+            ) VALUES (
+                :subject_id, :user_id, :room_id, :class_datetime, :location
+            )
+            RETURNING *"
+        );
+
+        $stmt->execute([
+            ":subject_id" => $data["subject_id"],
+            ":user_id" => $data["user_id"],
+            ":room_id" => $data["room_id"],
+            ":class_datetime" => $data["class_datetime"],
+            ":location" => $data["location"] ?? null
+        ]);
+
+        respond([
+            "success" => true,
+            "message" => "Class created successfully",
+            "data" => $stmt->fetch(PDO::FETCH_ASSOC)
+        ], 201);
+
+    } catch (PDOException $e) {
+        error_log("Create class error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to create class"
+        ], 500);
+    }
+}
+
+// CLASSES: GET, UPDATE, DELETE BY ID
+if (preg_match('#^/api/classes/(\d+)$#', $path, $m)) {
+    $id = (int)$m[1];
+
+    // GET CLASS BY ID
+    if ($method === "GET") {
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT
+                    c.id,
+                    c.subject_id,
+                    c.user_id,
+                    c.room_id,
+                    c.class_datetime,
+                    c.location,
+                    s.name AS subject_name,
+                    u.username AS teacher_name,
+                    r.room_name,
+                    TO_CHAR(c.class_datetime, 'FMDay') AS day_of_week,
+                    TO_CHAR(c.class_datetime, 'HH12:MI AM') AS start_time
+                FROM classes c
+                LEFT JOIN subjects s ON c.subject_id = s.id
+                LEFT JOIN users u ON c.user_id = u.id
+                LEFT JOIN rooms r ON c.room_id = r.id
+                WHERE c.id = :id"
+            );
+
+            $stmt->execute([":id" => $id]);
+            $class = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$class) {
+                respond([
+                    "success" => false,
+                    "message" => "Class not found"
+                ], 404);
+            }
+
+            respond([
+                "success" => true,
+                "data" => $class
+            ]);
+
+        } catch (PDOException $e) {
+            error_log("Get class error: " . $e->getMessage());
+
+            respond([
+                "success" => false,
+                "message" => "Failed to retrieve class"
+            ], 500);
+        }
+    }
+
+    // UPDATE CLASS
+    if ($method === "PUT") {
         $data = input();
 
-        foreach (["subject_id", "user_id", "room_id", "class_datetime"] as $field) {
-            if (!isset($data[$field])) {
-                respond(["success" => false, "message" => "$field is required"], 400);
+        $allowedFields = [
+            "subject_id",
+            "user_id",
+            "room_id",
+            "class_datetime",
+            "location"
+        ];
+
+        $updates = [];
+        $params = [":id" => $id];
+
+        foreach ($allowedFields as $field) {
+            if (array_key_exists($field, $data)) {
+                $updates[] = "$field = :$field";
+                $params[":$field"] = $data[$field];
             }
         }
 
-        $class = [
-            "id" => nextId($classes),
-            "subject_id" => (int)$data["subject_id"],
-            "user_id" => (int)$data["user_id"],
-            "room_id" => (int)$data["room_id"],
-            "class_datetime" => $data["class_datetime"],
-            "location" => $data["location"] ?? ""
-        ];
-
-        $classes[] = $class;
-
-        respond(["success" => true, "message" => "Class created",
-                 "data" => $class], 201);
-    }
-}
-
-if (preg_match('#^/api/classes/(\d+)$#', $path, $m)) {
-    $index = findIndex($classes, (int)$m[1]);
-
-    if ($method === "GET") {
-        if ($index < 0) respond(["success" => false, "message" => "Class not found"], 404);
-        respond(["success" => true, "data" => $classes[$index]]);
-    }
-
-    if ($method === "PUT") {
-        if ($index < 0) respond(["success" => false, "message" => "Class not found"], 404);
-
-        $data = input();
-        foreach (["subject_id", "user_id", "room_id", "class_datetime", "location"] as $field) {
-            if (array_key_exists($field, $data)) $classes[$index][$field] = $data[$field];
+        if (empty($updates)) {
+            respond([
+                "success" => false,
+                "message" => "No fields provided for update"
+            ], 400);
         }
 
-        respond(["success" => true, "message" => "Class updated",
-                 "data" => $classes[$index]]);
+        try {
+            $sql = "UPDATE classes SET " .
+                   implode(", ", $updates) .
+                   " WHERE id = :id RETURNING *";
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+
+            $class = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$class) {
+                respond([
+                    "success" => false,
+                    "message" => "Class not found"
+                ], 404);
+            }
+
+            respond([
+                "success" => true,
+                "message" => "Class updated successfully",
+                "data" => $class
+            ]);
+
+        } catch (PDOException $e) {
+            error_log("Update class error: " . $e->getMessage());
+
+            respond([
+                "success" => false,
+                "message" => "Failed to update class"
+            ], 500);
+        }
     }
 
+    // DELETE CLASS
     if ($method === "DELETE") {
-        if ($index < 0) respond(["success" => false, "message" => "Class not found"], 404);
-        array_splice($classes, $index, 1);
-        respond(["success" => true, "message" => "Class deleted"]);
+        try {
+            $stmt = $pdo->prepare(
+                "DELETE FROM classes WHERE id = :id RETURNING id"
+            );
+
+            $stmt->execute([":id" => $id]);
+
+            if (!$stmt->fetch()) {
+                respond([
+                    "success" => false,
+                    "message" => "Class not found"
+                ], 404);
+            }
+
+            respond([
+                "success" => true,
+                "message" => "Class deleted successfully"
+            ]);
+
+        } catch (PDOException $e) {
+            error_log("Delete class error: " . $e->getMessage());
+
+            respond([
+                "success" => false,
+                "message" => "Failed to delete class"
+            ], 500);
+        }
     }
 }
+
 
 // ATTENDANCES: GET ALL
 if ($path === "/api/attendances" && $method === "GET") {
