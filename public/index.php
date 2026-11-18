@@ -59,6 +59,12 @@ $users = [
         "password" => password_hash("password123", PASSWORD_DEFAULT),
         "email" => "admin@example.com",
         "phone_number" => "09123456789",
+
+        "student_number" => null,
+        "qr_code" => null,
+        "parent_id" => null,
+        "section" => null,
+
         "is_admin" => true,
         "is_teacher" => false,
         "is_student" => false,
@@ -115,7 +121,19 @@ if ($path === "/api/test" && $method === "GET") {
 if ($path === "/api/register" && $method === "POST") {
     $data = input();
 
-    foreach (["username", "password", "email"] as $field) {
+    foreach ([
+    "username",
+    "email",
+    "phone_number",
+    "student_number",
+    "qr_code",
+    "parent_id",
+    "section",
+    "is_admin",
+    "is_teacher",
+    "is_student",
+    "is_parent"
+] as $field) {
         if (empty($data[$field])) {
             respond([
                 "success" => false,
@@ -141,16 +159,22 @@ if ($path === "/api/register" && $method === "POST") {
     }
 
     $user = [
-        "id" => nextId($users),
-        "username" => $data["username"],
-        "password" => password_hash($data["password"], PASSWORD_DEFAULT),
-        "email" => $data["email"],
-        "phone_number" => $data["phone_number"] ?? "",
-        "is_admin" => false,
-        "is_teacher" => false,
-        "is_student" => true,
-        "is_parent" => false
-    ];
+    "id" => nextId($users),
+    "username" => $data["username"],
+    "password" => password_hash($data["password"], PASSWORD_DEFAULT),
+    "email" => $data["email"],
+    "phone_number" => $data["phone_number"] ?? "",
+
+    "student_number" => $data["student_number"] ?? null,
+    "qr_code" => null,
+    "parent_id" => $data["parent_id"] ?? null,
+    "section" => $data["section"] ?? null,
+
+    "is_admin" => false,
+    "is_teacher" => false,
+    "is_student" => true,
+    "is_parent" => false
+];
 
     $users[] = $user;
 
