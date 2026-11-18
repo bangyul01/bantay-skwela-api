@@ -446,8 +446,7 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m)) {
 
     respond([
         "success" => false,
-        "message" => "Failed to update user",
-        "debug" => $e->getMessage()
+        "message" => "Failed to update user"
     ], 500);
 }
     }
