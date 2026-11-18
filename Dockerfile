@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev \
 
 WORKDIR /app
 
+COPY config ./config
 COPY public ./public
 
 ENV PORT=10000
