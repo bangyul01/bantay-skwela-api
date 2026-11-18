@@ -2,6 +2,8 @@
 
 header("Content-Type: application/json; charset=UTF-8");
 
+require_once __DIR__ . '/../config/database.php';
+
 $method = $_SERVER["REQUEST_METHOD"];
 $path = rtrim(parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH), "/");
 $path = $path === "" ? "/" : $path;
