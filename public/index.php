@@ -601,8 +601,8 @@ if (preg_match('#^/api/students/(\d+)/schedule$#', $path, $m) && $method === "GE
                 c.user_id AS teacher_id,
                 u.username AS teacher_name,
                 r.room_name,
-                TO_CHAR(c.class_datetime, 'FMDay') AS day_of_week,
-                TO_CHAR(c.class_datetime, 'HH12:MI AM') AS start_time,
+                TO_CHAR(c.class_datetime AT TIME ZONE 'Asia/Manila', 'FMDay') AS day_of_week,
+                TO_CHAR(c.class_datetime AT TIME ZONE 'Asia/Manila', 'HH12:MI AM') AS start_time,
                 NULL AS end_time
             FROM class_enrollments e
             JOIN classes c ON e.class_id = c.id
