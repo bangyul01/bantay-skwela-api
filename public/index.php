@@ -161,6 +161,7 @@ if ($path === "/api/register" && $method === "POST") {
     ], 201);
 }
 
+
 // AUTH: LOGIN
 if (
     in_array($path, ["/api/login", "/api/auth/login"], true)
@@ -168,16 +169,36 @@ if (
 ) {
     $data = input();
 
+    $identifier = $data["username"] ?? $data["email"] ?? "";
+    $password = $data["password"] ?? "";
+
     foreach ($users as $user) {
+
         if (
-            $user["username"] === ($data["username"] ?? "") &&
-            password_verify($data["password"] ?? "", $user["password"])
+            ($user["username"] === $identifier ||
+             $user["email"] === $identifier) &&
+            password_verify($password, $user["password"])
         ) {
+
+            $userData = safeUser($user);
+
+            $userData["phone"] = $user["phone_number"] ?? "";
+
+            if (!empty($user["is_admin"])) {
+                $userData["role"] = "admin";
+            } elseif (!empty($user["is_teacher"])) {
+                $userData["role"] = "teacher";
+            } elseif (!empty($user["is_parent"])) {
+                $userData["role"] = "parent";
+            } else {
+                $userData["role"] = "student";
+            }
+
             respond([
                 "success" => true,
                 "message" => "Login successful",
-                "token" => bin2hex(random_bytes(16)),
-                "data" => safeUser($user)
+                "token" => bin2hex(random_bytes(32)),
+                "data" => $userData
             ]);
         }
     }
