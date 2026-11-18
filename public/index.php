@@ -442,13 +442,14 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m)) {
             ]);
 
         } catch (PDOException $e) {
-            error_log("Update user error: " . $e->getMessage());
+    error_log("Update user error: " . $e->getMessage());
 
-            respond([
-                "success" => false,
-                "message" => "Failed to update user"
-            ], 500);
-        }
+    respond([
+        "success" => false,
+        "message" => "Failed to update user",
+        "debug" => $e->getMessage()
+    ], 500);
+}
     }
 
     // DELETE USER
