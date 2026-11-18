@@ -104,6 +104,26 @@ $attendances = [
     ]
 ];
 
+// DATABASE CONNECTION TEST
+if ($path === "/api/db-test" && $method === "GET") {
+    try {
+        $stmt = $pdo->query("SELECT DATABASE() AS database_name");
+        $result = $stmt->fetch();
+
+        respond([
+            "success" => true,
+            "message" => "Database connection successful",
+            "database" => $result["database_name"]
+        ]);
+
+    } catch (PDOException $e) {
+        respond([
+            "success" => false,
+            "message" => "Database query failed"
+        ], 500);
+    }
+}
+
 // API STATUS
 if ($path === "/" && $method === "GET") {
     respond([
