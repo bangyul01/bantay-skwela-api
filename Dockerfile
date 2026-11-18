@@ -3,6 +3,7 @@ FROM php:8.3-cli
 WORKDIR /app
 
 COPY public ./public
+COPY config ./config
 
 ENV PORT=10000
 
