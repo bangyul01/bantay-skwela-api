@@ -268,12 +268,24 @@ if (
             $userData["role"] = "student";
         }
 
-        respond([
-            "success" => true,
-            "message" => "Login successful",
-            "token" => bin2hex(random_bytes(32)),
-            "data" => $userData
-        ]);
+        $token = bin2hex(random_bytes(32));
+
+$tokenStmt = $pdo->prepare(
+    "INSERT INTO auth_tokens (user_id, token, expires_at)
+     VALUES (:user_id, :token, NOW() + INTERVAL '7 days')"
+);
+
+$tokenStmt->execute([
+    ':user_id' => $user['id'],
+    ':token' => $token
+]);
+
+respond([
+    "success" => true,
+    "message" => "Login successful",
+    "token" => $token,
+    "data" => $userData
+]);
 
     } catch (PDOException $e) {
         error_log("Login error: " . $e->getMessage());
