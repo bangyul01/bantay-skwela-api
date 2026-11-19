@@ -932,6 +932,108 @@ if (preg_match('#^/api/classes/(\d+)$#', $path, $m)) {
 }
 
 
+// TEACHER: GENERATE CLASS QR CODE
+if (preg_match('#^/api/classes/(\d+)/qr$#', $path, $m)
+    && $method === "POST") {
+
+    $classId = (int)$m[1];
+
+    // Verify teacher authentication
+    $teacher = authenticatedUser($pdo);
+
+    if (!$teacher) {
+        respond([
+            "success" => false,
+            "message" => "Unauthorized"
+        ], 401);
+    }
+
+    if (empty($teacher["is_teacher"])) {
+        respond([
+            "success" => false,
+            "message" => "Only teachers can generate QR codes"
+        ], 403);
+    }
+
+    try {
+        // Check whether this class belongs to the teacher
+        $classStmt = $pdo->prepare(
+            "SELECT id FROM classes
+             WHERE id = :class_id
+             AND user_id = :teacher_id"
+        );
+
+        $classStmt->execute([
+            ":class_id" => $classId,
+            ":teacher_id" => $teacher["id"]
+        ]);
+
+        if (!$classStmt->fetch()) {
+            respond([
+                "success" => false,
+                "message" => "Class not found or not assigned to this teacher"
+            ], 404);
+        }
+
+        // Deactivate previous QR sessions for this class
+        $deactivateStmt = $pdo->prepare(
+            "UPDATE qr_sessions
+             SET is_active = FALSE
+             WHERE class_id = :class_id
+             AND is_active = TRUE"
+        );
+
+        $deactivateStmt->execute([
+            ":class_id" => $classId
+        ]);
+
+        // Generate a new QR session
+        $qrStmt = $pdo->prepare(
+            "INSERT INTO qr_sessions (
+                class_id,
+                teacher_id,
+                expires_at,
+                is_active
+            ) VALUES (
+                :class_id,
+                :teacher_id,
+                NOW() + INTERVAL '15 minutes',
+                TRUE
+            )
+            RETURNING id, class_id, teacher_id, token, expires_at"
+        );
+
+        $qrStmt->execute([
+            ":class_id" => $classId,
+            ":teacher_id" => $teacher["id"]
+        ]);
+
+        $qrSession = $qrStmt->fetch(PDO::FETCH_ASSOC);
+
+        respond([
+            "success" => true,
+            "message" => "QR code generated successfully",
+            "data" => [
+                "id" => $qrSession["id"],
+                "class_id" => $qrSession["class_id"],
+                "teacher_id" => $qrSession["teacher_id"],
+                "token" => $qrSession["token"],
+                "qr_data" => $qrSession["token"],
+                "expires_at" => $qrSession["expires_at"]
+            ]
+        ], 201);
+
+    } catch (PDOException $e) {
+        error_log("Generate QR error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to generate QR code"
+        ], 500);
+    }
+}
+
+
 // ATTENDANCES: GET ALL
 if ($path === "/api/attendances" && $method === "GET") {
     respond(["success" => true, "data" => $attendances]);
