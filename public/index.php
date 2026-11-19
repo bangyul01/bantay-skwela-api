@@ -52,6 +52,40 @@ function safeUsers($users) {
     return array_map("safeUser", array_values($users));
 }
 
+function authenticatedUser($pdo) {
+    $headers = function_exists("getallheaders")
+        ? getallheaders()
+        : [];
+
+    $authorization = $_SERVER["HTTP_AUTHORIZATION"]
+        ?? $headers["Authorization"]
+        ?? $headers["authorization"]
+        ?? "";
+
+    if (!preg_match('/Bearer\s+(\S+)/i', $authorization, $matches)) {
+        return null;
+    }
+
+    $token = $matches[1];
+
+    $stmt = $pdo->prepare(
+        "SELECT u.*
+         FROM auth_tokens t
+         JOIN users u ON u.id = t.user_id
+         WHERE t.token = :token
+         AND t.expires_at > NOW()
+         LIMIT 1"
+    );
+
+    $stmt->execute([
+        ":token" => $token
+    ]);
+
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $user ?: null;
+}
+
 // Temporary in-memory data.
 // Data resets whenever the PHP server restarts.
 $users = [
