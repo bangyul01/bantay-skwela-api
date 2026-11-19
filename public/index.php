@@ -173,6 +173,30 @@ if ($path === "/api/test" && $method === "GET") {
     ]);
 }
 
+// AUTHENTICATION TEST
+if ($path === "/api/auth-test" && $method === "GET") {
+    $user = authenticatedUser($pdo);
+
+    if (!$user) {
+        respond([
+            "success" => false,
+            "message" => "Unauthorized. Invalid or expired token."
+        ], 401);
+    }
+
+    respond([
+        "success" => true,
+        "message" => "Authentication successful",
+        "data" => [
+            "id" => $user["id"],
+            "username" => $user["username"],
+            "role" => !empty($user["is_teacher"])
+                ? "teacher"
+                : "other"
+        ]
+    ]);
+}
+
 
 // AUTH: REGISTER
 if ($path === "/api/register" && $method === "POST") {
