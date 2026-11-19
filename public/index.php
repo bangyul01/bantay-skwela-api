@@ -768,6 +768,83 @@ if ($path === "/api/teachers/classes" && $method === "GET") {
     }
 }
 
+// TEACHER: GET CLASS ATTENDANCE
+if (preg_match('#^/api/classes/(\d+)/attendances$#', $path, $matches)
+    && $method === "GET") {
+
+    $teacher = authenticatedUser($pdo);
+
+    if (!$teacher) {
+        respond([
+            "success" => false,
+            "message" => "Unauthorized"
+        ], 401);
+    }
+
+    if (empty($teacher["is_teacher"])) {
+        respond([
+            "success" => false,
+            "message" => "Only teachers can access class attendance"
+        ], 403);
+    }
+
+    $classId = (int) $matches[1];
+
+    try {
+        // Verify class ownership
+        $check = $pdo->prepare(
+            "SELECT id FROM classes
+             WHERE id = :class_id
+             AND user_id = :teacher_id"
+        );
+
+        $check->execute([
+            ":class_id" => $classId,
+            ":teacher_id" => $teacher["id"]
+        ]);
+
+        if (!$check->fetch(PDO::FETCH_ASSOC)) {
+            respond([
+                "success" => false,
+                "message" => "Class not found or access denied"
+            ], 403);
+        }
+
+        // Get enrolled students and their attendance
+        $stmt = $pdo->prepare(
+            "SELECT
+                u.id AS student_id,
+                u.username AS student_name,
+                COALESCE(ca.status, 'Absent') AS status,
+                ca.datetime_check_in
+             FROM class_enrollments ce
+             INNER JOIN users u
+                ON ce.student_id = u.id
+             LEFT JOIN class_attendances ca
+                ON ca.class_id = ce.class_id
+                AND ca.user_id = ce.student_id
+             WHERE ce.class_id = :class_id
+             ORDER BY u.username ASC"
+        );
+
+        $stmt->execute([
+            ":class_id" => $classId
+        ]);
+
+        respond([
+            "success" => true,
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Get class attendance error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to retrieve class attendance"
+        ], 500);
+    }
+}
 
 // CLASSES: GET ALL
 if ($path === "/api/classes" && $method === "GET") {
