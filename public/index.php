@@ -959,6 +959,96 @@ if (preg_match('#^/api/classes/(\d+)/enrollments$#', $path, $matches)
 }
 
 
+// ENROLLMENTS: REMOVE STUDENT FROM CLASS
+if (preg_match('#^/api/classes/(\d+)/enrollments/(\d+)$#', $path, $matches)
+    && $method === "DELETE") {
+
+    $teacher = authenticatedUser($pdo);
+
+    if (!$teacher) {
+        respond([
+            "success" => false,
+            "message" => "Unauthorized"
+        ], 401);
+    }
+
+    if (empty($teacher["is_teacher"])) {
+        respond([
+            "success" => false,
+            "message" => "Only teachers can remove students"
+        ], 403);
+    }
+
+    $classId = (int) $matches[1];
+    $studentId = (int) $matches[2];
+
+    try {
+        // Verify that the teacher owns the class
+        $checkClass = $pdo->prepare(
+            "SELECT id FROM classes
+             WHERE id = :class_id
+             AND user_id = :teacher_id"
+        );
+
+        $checkClass->execute([
+            ":class_id" => $classId,
+            ":teacher_id" => $teacher["id"]
+        ]);
+
+        if (!$checkClass->fetch(PDO::FETCH_ASSOC)) {
+            respond([
+                "success" => false,
+                "message" => "Class not found or access denied"
+            ], 403);
+        }
+
+        // Check whether the enrollment exists
+        $checkEnrollment = $pdo->prepare(
+            "SELECT 1 FROM class_enrollments
+             WHERE class_id = :class_id
+             AND student_id = :student_id"
+        );
+
+        $checkEnrollment->execute([
+            ":class_id" => $classId,
+            ":student_id" => $studentId
+        ]);
+
+        if (!$checkEnrollment->fetch(PDO::FETCH_ASSOC)) {
+            respond([
+                "success" => false,
+                "message" => "Student is not enrolled in this class"
+            ], 404);
+        }
+
+        // Remove enrollment
+        $stmt = $pdo->prepare(
+            "DELETE FROM class_enrollments
+             WHERE class_id = :class_id
+             AND student_id = :student_id"
+        );
+
+        $stmt->execute([
+            ":class_id" => $classId,
+            ":student_id" => $studentId
+        ]);
+
+        respond([
+            "success" => true,
+            "message" => "Student unenrolled successfully"
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Remove enrollment error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to remove student enrollment"
+        ], 500);
+    }
+}
+
+
 // TEACHER: GET CLASS ATTENDANCE
 if (preg_match('#^/api/classes/(\d+)/attendances$#', $path, $matches)
     && $method === "GET") {
