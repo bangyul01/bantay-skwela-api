@@ -1034,6 +1034,163 @@ if (preg_match('#^/api/classes/(\d+)/qr$#', $path, $m)
 }
 
 
+// STUDENT: SCAN CLASS QR CODE
+if ($path === "/api/attendances/scan" && $method === "POST") {
+
+    // Verify student authentication
+    $student = authenticatedUser($pdo);
+
+    if (!$student) {
+        respond([
+            "success" => false,
+            "message" => "Unauthorized"
+        ], 401);
+    }
+
+    if (empty($student["is_student"])) {
+        respond([
+            "success" => false,
+            "message" => "Only students can scan attendance QR codes"
+        ], 403);
+    }
+
+    // Get QR token from request body
+    $data = input();
+    $qrToken = trim($data["qr_token"] ?? "");
+
+    if ($qrToken === "") {
+        respond([
+            "success" => false,
+            "message" => "QR token is required"
+        ], 400);
+    }
+
+    try {
+        // Find an active and unexpired QR session
+        $stmt = $pdo->prepare(
+            "SELECT
+                q.id AS qr_session_id,
+                q.class_id,
+                c.class_datetime,
+                s.name AS class_name
+             FROM qr_sessions q
+             JOIN classes c ON c.id = q.class_id
+             JOIN subjects s ON s.id = c.subject_id
+             WHERE q.token = :token
+             AND q.is_active = TRUE
+             AND q.expires_at > NOW()
+             LIMIT 1"
+        );
+
+        $stmt->execute([
+            ":token" => $qrToken
+        ]);
+
+        $qrSession = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$qrSession) {
+            respond([
+                "success" => false,
+                "message" => "Invalid or expired QR code"
+            ], 400);
+        }
+
+        $classId = (int)$qrSession["class_id"];
+        $studentId = (int)$student["id"];
+
+        // Check if student is enrolled in this class
+        $enrollmentStmt = $pdo->prepare(
+            "SELECT id FROM class_enrollments
+             WHERE class_id = :class_id
+             AND student_id = :student_id
+             LIMIT 1"
+        );
+
+        $enrollmentStmt->execute([
+            ":class_id" => $classId,
+            ":student_id" => $studentId
+        ]);
+
+        if (!$enrollmentStmt->fetch()) {
+            respond([
+                "success" => false,
+                "message" => "You are not enrolled in this class"
+            ], 403);
+        }
+
+        // Determine attendance status using the 15-minute grace period
+        $statusStmt = $pdo->prepare(
+            "SELECT CASE
+                WHEN NOW() <= CAST(:class_datetime AS TIMESTAMPTZ)
+                    + INTERVAL '15 minutes'
+                THEN 'On Time'
+                ELSE 'Late'
+             END AS attendance_status"
+        );
+
+        $statusStmt->execute([
+            ":class_datetime" => $qrSession["class_datetime"]
+        ]);
+
+        $status = $statusStmt->fetchColumn();
+
+        // Record attendance
+        $insertStmt = $pdo->prepare(
+            "INSERT INTO class_attendances (
+                class_id,
+                user_id,
+                datetime_check_in,
+                status
+            ) VALUES (
+                :class_id,
+                :user_id,
+                NOW(),
+                :status
+            )
+            RETURNING id, datetime_check_in"
+        );
+
+        $insertStmt->execute([
+            ":class_id" => $classId,
+            ":user_id" => $studentId,
+            ":status" => $status
+        ]);
+
+        $attendance = $insertStmt->fetch(PDO::FETCH_ASSOC);
+
+        respond([
+            "success" => true,
+            "message" => "Attendance recorded successfully",
+            "data" => [
+                "attendance_id" => $attendance["id"],
+                "class_id" => $classId,
+                "class_name" => $qrSession["class_name"],
+                "student_id" => $studentId,
+                "status" => $status,
+                "datetime_check_in" => $attendance["datetime_check_in"]
+            ]
+        ], 201);
+
+    } catch (PDOException $e) {
+
+        // Prevent duplicate attendance records
+        if ($e->getCode() === "23505") {
+            respond([
+                "success" => false,
+                "message" => "Attendance has already been recorded for this class"
+            ], 409);
+        }
+
+        error_log("QR attendance error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to record attendance"
+        ], 500);
+    }
+}
+
+
 // ATTENDANCES: GET ALL
 if ($path === "/api/attendances" && $method === "GET") {
     respond(["success" => true, "data" => $attendances]);
