@@ -988,20 +988,22 @@ if (preg_match('#^/api/classes/(\d+)/qr$#', $path, $m)
         ]);
 
         // Generate a new QR session
-        $qrStmt = $pdo->prepare(
-            "INSERT INTO qr_sessions (
-                class_id,
-                teacher_id,
-                expires_at,
-                is_active
-            ) VALUES (
-                :class_id,
-                :teacher_id,
-                NOW() + INTERVAL '15 minutes',
-                TRUE
-            )
-            RETURNING id, class_id, teacher_id, token, expires_at"
-        );
+        
+$qrStmt = $pdo->prepare(
+    "INSERT INTO qr_sessions (
+        class_id,
+        teacher_id,
+        expires_at,
+        is_active
+    ) VALUES (
+        :class_id,
+        :teacher_id,
+        NOW() + INTERVAL '15 minutes',
+        TRUE
+    )
+    RETURNING id, class_id, teacher_id, token, expires_at"
+);
+
 
         $qrStmt->execute([
             ":class_id" => $classId,
