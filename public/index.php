@@ -702,6 +702,73 @@ if (preg_match('#^/api/students/(\d+)/schedule$#', $path, $m) && $method === "GE
     }
 }
 
+
+// TEACHER: GET ASSIGNED CLASSES
+if ($path === "/api/teachers/classes" && $method === "GET") {
+
+    // Verify teacher authentication
+    $teacher = authenticatedUser($pdo);
+
+    if (!$teacher) {
+        respond([
+            "success" => false,
+            "message" => "Unauthorized"
+        ], 401);
+    }
+
+    if (empty($teacher["is_teacher"])) {
+        respond([
+            "success" => false,
+            "message" => "Only teachers can access assigned classes"
+        ], 403);
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT
+                c.id,
+                s.name AS class_name,
+                s.name AS subject_name,
+                c.user_id AS teacher_id,
+                u.username AS teacher_name,
+                r.room_name,
+                TO_CHAR(
+                    c.class_datetime AT TIME ZONE 'Asia/Manila',
+                    'FMDay'
+                ) AS day_of_week,
+                TO_CHAR(
+                    c.class_datetime AT TIME ZONE 'Asia/Manila',
+                    'HH12:MI AM'
+                ) AS start_time,
+                NULL AS end_time
+            FROM classes c
+            LEFT JOIN subjects s ON c.subject_id = s.id
+            LEFT JOIN users u ON c.user_id = u.id
+            LEFT JOIN rooms r ON c.room_id = r.id
+            WHERE c.user_id = :teacher_id
+            ORDER BY c.class_datetime ASC"
+        );
+
+        $stmt->execute([
+            ":teacher_id" => $teacher["id"]
+        ]);
+
+        respond([
+            "success" => true,
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Get teacher classes error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to retrieve teacher classes"
+        ], 500);
+    }
+}
+
+
 // CLASSES: GET ALL
 if ($path === "/api/classes" && $method === "GET") {
     try {
