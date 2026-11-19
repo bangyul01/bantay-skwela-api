@@ -768,6 +768,197 @@ if ($path === "/api/teachers/classes" && $method === "GET") {
     }
 }
 
+
+// ENROLLMENTS: GET STUDENTS IN A CLASS
+if (preg_match('#^/api/classes/(\d+)/enrollments$#', $path, $matches)
+    && $method === "GET") {
+
+    $teacher = authenticatedUser($pdo);
+
+    if (!$teacher) {
+        respond([
+            "success" => false,
+            "message" => "Unauthorized"
+        ], 401);
+    }
+
+    if (empty($teacher["is_teacher"])) {
+        respond([
+            "success" => false,
+            "message" => "Only teachers can view enrollments"
+        ], 403);
+    }
+
+    $classId = (int) $matches[1];
+
+    try {
+        // Verify class ownership
+        $check = $pdo->prepare(
+            "SELECT id FROM classes
+             WHERE id = :class_id
+             AND user_id = :teacher_id"
+        );
+
+        $check->execute([
+            ":class_id" => $classId,
+            ":teacher_id" => $teacher["id"]
+        ]);
+
+        if (!$check->fetch(PDO::FETCH_ASSOC)) {
+            respond([
+                "success" => false,
+                "message" => "Class not found or access denied"
+            ], 403);
+        }
+
+        // Retrieve enrolled students
+        $stmt = $pdo->prepare(
+            "SELECT
+                u.id AS student_id,
+                u.username AS student_name
+             FROM class_enrollments ce
+             INNER JOIN users u
+                ON ce.student_id = u.id
+             WHERE ce.class_id = :class_id
+             ORDER BY u.username ASC"
+        );
+
+        $stmt->execute([
+            ":class_id" => $classId
+        ]);
+
+        respond([
+            "success" => true,
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Get enrollments error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to retrieve enrollments"
+        ], 500);
+    }
+}
+
+
+ // ENROLLMENTS: ADD STUDENT TO CLASS
+if (preg_match('#^/api/classes/(\d+)/enrollments$#', $path, $matches)
+    && $method === "POST") {
+
+    $teacher = authenticatedUser($pdo);
+
+    if (!$teacher) {
+        respond([
+            "success" => false,
+            "message" => "Unauthorized"
+        ], 401);
+    }
+
+    if (empty($teacher["is_teacher"])) {
+        respond([
+            "success" => false,
+            "message" => "Only teachers can enroll students"
+        ], 403);
+    }
+
+    $classId = (int) $matches[1];
+    $data = input();
+    $studentId = (int) ($data["student_id"] ?? 0);
+
+    if ($studentId <= 0) {
+        respond([
+            "success" => false,
+            "message" => "Valid student_id is required"
+        ], 400);
+    }
+
+    try {
+        // Verify that the teacher owns the class
+        $checkClass = $pdo->prepare(
+            "SELECT id FROM classes
+             WHERE id = :class_id
+             AND user_id = :teacher_id"
+        );
+
+        $checkClass->execute([
+            ":class_id" => $classId,
+            ":teacher_id" => $teacher["id"]
+        ]);
+
+        if (!$checkClass->fetch(PDO::FETCH_ASSOC)) {
+            respond([
+                "success" => false,
+                "message" => "Class not found or access denied"
+            ], 403);
+        }
+
+        // Verify that the selected user is a student
+        $checkStudent = $pdo->prepare(
+            "SELECT id FROM users
+             WHERE id = :student_id
+             AND is_student = TRUE"
+        );
+
+        $checkStudent->execute([
+            ":student_id" => $studentId
+        ]);
+
+        if (!$checkStudent->fetch(PDO::FETCH_ASSOC)) {
+            respond([
+                "success" => false,
+                "message" => "Student not found"
+            ], 404);
+        }
+
+        // Check if student is already enrolled
+        $checkEnrollment = $pdo->prepare(
+            "SELECT 1 FROM class_enrollments
+             WHERE class_id = :class_id
+             AND student_id = :student_id"
+        );
+
+        $checkEnrollment->execute([
+            ":class_id" => $classId,
+            ":student_id" => $studentId
+        ]);
+
+        if ($checkEnrollment->fetch(PDO::FETCH_ASSOC)) {
+            respond([
+                "success" => false,
+                "message" => "Student is already enrolled"
+            ], 409);
+        }
+
+        // Insert enrollment
+        $stmt = $pdo->prepare(
+            "INSERT INTO class_enrollments
+             (class_id, student_id)
+             VALUES (:class_id, :student_id)"
+        );
+
+        $stmt->execute([
+            ":class_id" => $classId,
+            ":student_id" => $studentId
+        ]);
+
+        respond([
+            "success" => true,
+            "message" => "Student enrolled successfully"
+        ], 201);
+
+    } catch (PDOException $e) {
+        error_log("Enroll student error: " . $e->getMessage());
+
+        respond([
+            "success" => false,
+            "message" => "Failed to enroll student"
+        ], 500);
+    }
+}
+
+
 // TEACHER: GET CLASS ATTENDANCE
 if (preg_match('#^/api/classes/(\d+)/attendances$#', $path, $matches)
     && $method === "GET") {
